@@ -51,6 +51,7 @@
 #include "plugins/AnimationPlugin.h"
 #include "plugins/BigClockPlugin.h"
 #include "plugins/ClockPlugin.h"
+#include "plugins/SplitClockPlugin.h"
 #include "plugins/WeatherPlugin.h"
 #endif
 
@@ -222,6 +223,9 @@ void baseSetup()
   pluginManager.addPlugin(new AnimationPlugin());
   pluginManager.addPlugin(new DDPPlugin());
   pluginManager.addPlugin(new ArtNetPlugin());
+  // Append new modes to preserve IDs used by saved plugins and schedules.
+  pluginManager.addPlugin(new SplitClockPlugin(SplitClockPlugin::Mode::HOURS));
+  pluginManager.addPlugin(new SplitClockPlugin(SplitClockPlugin::Mode::MINUTES));
 #endif
 
   Screen.clear();

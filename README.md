@@ -66,6 +66,7 @@ Turn your OBEGRÄNSAD LED Wall Lamp into a live drawing canvas
 - Circle
 - Clock
 - Big Clock
+- Big Clock HH / Big Clock MM (two-panel clock)
 - Weather
 - Rain
 - Animation (with Animation Creator in Web UI)
@@ -85,6 +86,25 @@ Control the lamp using the built-in web GUI. Find the device IP address via:
 - Router admin panel
 
 ---
+
+### Two-panel Big Clock
+
+Select **Big Clock HH** on the left panel and **Big Clock MM** on the right
+panel. Each panel displays two digits using the existing 7-row Big Clock font,
+centered vertically (not stretched to full height). Hours use 24-hour format;
+both halves retain leading zeros, including `00` at midnight. No colon is drawn
+between the panels.
+
+Configure the same timezone and NTP server on both panels via `/config`. Each
+panel reads its own NTP-maintained clock; they do not communicate directly, so
+small differences at minute/hour transitions are possible. Unsynchronized
+panels show a waiting indicator without blocking the main loop.
+
+Use **Set Default** on each panel to retain its selected mode across restarts
+(where persistent storage is enabled). Select the mode in the web UI to clear
+an active plugin schedule. The new modes are appended as IDs **31** (HH) and
+**32** (MM); all existing plugin IDs remain unchanged. Integrations should
+discover names and IDs from `/api/info` rather than assume registration order.
 
 ## Hardware Setup
 
@@ -524,7 +544,7 @@ poetry run python ddp.py clear
 1. **Enable DDP Plugin**
 
    ```bash
-   curl -X PATCH "http://your-server/api/plugin?id=17"
+   curl -X PATCH "http://your-server/api/plugin?id=29"
    ```
 
 2. **Send Pixels**
@@ -532,6 +552,42 @@ poetry run python ddp.py clear
    ```bash
    python3 ddp.py --ip 192.168.178.50 --fill 128
    ```
+
+### Multi-panel animations and diagnostics
+
+The standard-library-only scripts below run on your computer, not in the
+firmware. They treat adjacent panels as one continuous canvas (32x16 for two
+panels). Supply `--panels` in physical **left-to-right** order; there are no
+default device addresses. One to 64 distinct IPv4 panel addresses are supported.
+
+Before running them, select **DDP** on every panel and disable any schedules or
+external automations that would switch modes. Find the DDP mode ID in
+`/api/info` (currently 29). Set nonzero brightness for visual checks. The scripts
+overwrite display content and attempt to clear all panels on completion,
+failure, or Ctrl+C; they do not restore the previous image or mode.
+
+```bash
+python wall_anim.py all --panels 192.168.150.181 192.168.150.180 --duration 20 --fps 30
+python ddp_sweep.py --panels 192.168.150.181 192.168.150.180
+python ddp_verify.py --panels 192.168.150.181 192.168.150.180
+```
+
+Use your actual panel order in place of the example addresses.
+
+- `wall_anim.py`: radar, wave, marquee, Matrix rain, plasma, fire, Life,
+  starfield, bounce, ripple, Snake, Pac-Man, Tetris, and intro/death animations.
+  `all` runs each individual animation once; `loop` alternates Pac-Man/Tetris.
+  `--duration` defaults to 20 seconds and applies to the entire `loop` or per
+  animation in `all` mode. Use `--block` to control the maximum length of each
+  Pac-Man/Tetris segment.
+- `ddp_sweep.py`: moves a bright bar across panel boundaries to inspect physical
+  order and alignment.
+- `ddp_verify.py`: sends known patterns and checks `/api/data` on each panel,
+  exiting nonzero on a mismatch or malformed response. This checks the logical
+  framebuffer, not physical wiring or LED output.
+
+All tools accept `--help` and `--port` (default 4048). UDP has no delivery
+acknowledgements; a successful send alone does not prove the panel displayed it.
 
 ### Using ddp.py
 
