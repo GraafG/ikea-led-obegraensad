@@ -1,9 +1,15 @@
 import { createEventSignal } from "@solid-primitives/event-listener";
 import { createReconnectingWS, createWSState } from "@solid-primitives/websocket";
-import { batch, createContext, createEffect, type JSX, useContext } from "solid-js";
+import { batch, createContext, createEffect, type JSX, untrack, useContext } from "solid-js";
 import { createStore } from "solid-js/store";
 
-import { type ScheduleItem, type Store, type StoreActions, SYSTEM_STATUS } from "../types";
+import {
+  type BrightnessSchedule,
+  type ScheduleItem,
+  type Store,
+  type StoreActions,
+  SYSTEM_STATUS,
+} from "../types";
 import { ToastProvider } from "./toast";
 
 const ws = createReconnectingWS(
@@ -13,8 +19,25 @@ const ws = createReconnectingWS(
       : import.meta.env.VITE_WS_URL
   }ws`,
 );
+const LIVE_PREVIEW_STORAGE_KEY = "livePreview";
+
+const readLivePreview = () => {
+  try {
+    return localStorage.getItem(LIVE_PREVIEW_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+};
+
+const sendLivePreview = (enabled: boolean) =>
+  ws.send(JSON.stringify({ event: "live-preview", enabled }));
+
 ws.addEventListener("open", (event) => {
   (event.currentTarget as WebSocket).binaryType = "arraybuffer";
+  // the device subscribes every new connection, so only opting out is needed
+  if (!mainStore.livePreview) {
+    sendLivePreview(false);
+  }
 });
 
 const wsState = createWSState(ws);
@@ -26,7 +49,15 @@ const [mainStore, setStore] = createStore<Store>({
   rotation: 0,
   plugins: [],
   plugin: 1,
+  baseBrightness: 0,
   brightness: 0,
+  brightnessSchedule: {
+    enabled: false,
+    startTime: "22:00",
+    endTime: "07:00",
+    brightness: 64,
+    active: false,
+  },
   artnetUniverse: 1,
   GOLDelay: 150,
   indexMatrix: [...new Array(256)].map((_, i) => i),
@@ -35,6 +66,7 @@ const [mainStore, setStore] = createStore<Store>({
   connectionState: wsState,
   connectionStatus: connectionStatus[0],
   schedule: [],
+  livePreview: readLivePreview(),
 });
 
 const actions: StoreActions = {
@@ -42,13 +74,24 @@ const actions: StoreActions = {
   setRotation: (rotation) => setStore("rotation", rotation),
   setPlugins: (plugins) => setStore("plugins", plugins),
   setPlugin: (plugin) => setStore("plugin", plugin),
+  setBaseBrightness: (brightness) => setStore("baseBrightness", brightness),
   setBrightness: (brightness) => setStore("brightness", brightness),
+  setBrightnessSchedule: (schedule) => setStore("brightnessSchedule", schedule),
   setArtnetUniverse: (artnetUniverse) => setStore("artnetUniverse", artnetUniverse),
   setGOLDelay: (GOLDelay) => setStore("GOLDelay", GOLDelay),
   setIndexMatrix: (indexMatrix) => setStore("indexMatrix", indexMatrix),
   setLeds: (leds) => setStore("leds", leds),
   setSystemStatus: (systemStatus: SYSTEM_STATUS) => setStore("systemStatus", systemStatus),
   setSchedule: (items: ScheduleItem[]) => setStore("schedule", items),
+  setLivePreview: (enabled) => {
+    setStore("livePreview", enabled);
+    try {
+      localStorage.setItem(LIVE_PREVIEW_STORAGE_KEY, String(enabled));
+    } catch {
+      // preference is only kept for this session
+    }
+    sendLivePreview(enabled);
+  },
   send: ws.send,
 };
 
@@ -62,6 +105,18 @@ const isValidNumber = (value: unknown): value is number =>
 const isValidBoolean = (value: unknown): value is boolean => typeof value === "boolean";
 
 const isValidArray = (value: unknown): value is unknown[] => Array.isArray(value);
+
+const isBrightnessSchedule = (value: unknown): value is BrightnessSchedule => {
+  if (!value || typeof value !== "object") return false;
+  const schedule = value as Record<string, unknown>;
+  return (
+    isValidBoolean(schedule.enabled) &&
+    typeof schedule.startTime === "string" &&
+    typeof schedule.endTime === "string" &&
+    isValidNumber(schedule.brightness) &&
+    isValidBoolean(schedule.active)
+  );
+};
 
 export const StoreProvider = (props?: { value?: Store; children?: JSX.Element }) => {
   const messageEvent = createEventSignal<{ message: MessageEvent }>(ws, "message");
@@ -91,7 +146,12 @@ export const StoreProvider = (props?: { value?: Store; children?: JSX.Element })
       const data = messageEvent()?.data;
       if (data instanceof ArrayBuffer) {
         if (data.byteLength === 256) {
-          actions.setLeds(Array.from(new Uint8Array(data)));
+          const frame = new Uint8Array(data);
+          // the device can resend an identical frame, skip it so nothing redraws
+          const leds = untrack(() => mainStore.leds);
+          if (!frame.every((value, i) => value === leds[i])) {
+            actions.setLeds(Array.from(frame));
+          }
         }
         return;
       }
@@ -117,8 +177,16 @@ export const StoreProvider = (props?: { value?: Store; children?: JSX.Element })
               actions.setRotation(json.rotation);
             }
 
+            if (isValidNumber(json.baseBrightness)) {
+              actions.setBaseBrightness(json.baseBrightness);
+            }
+
             if (isValidNumber(json.brightness)) {
               actions.setBrightness(json.brightness);
+            }
+
+            if (isBrightnessSchedule(json.brightnessSchedule)) {
+              actions.setBrightnessSchedule(json.brightnessSchedule);
             }
 
             if (isValidBoolean(json.scheduleActive)) {

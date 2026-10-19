@@ -206,27 +206,35 @@ void WeatherPlugin::drawWeather()
 
   if (temperature >= 10)
   {
-    Screen.drawCharacter(9, tempY, Screen.readBytes(degreeSymbol), 4, MAX_BRIGHTNESS);
+    Screen.drawBitmap(9, tempY, degreeSymbol, sizeof(degreeSymbol), 4, MAX_BRIGHTNESS);
     Screen.drawNumbers(1, tempY, {(temperature - temperature % 10) / 10, temperature % 10});
   }
   else if (temperature <= -10)
   {
-    Screen.drawCharacter(0, tempY, Screen.readBytes(minusSymbol), 4);
-    Screen.drawCharacter(11, tempY, Screen.readBytes(degreeSymbol), 4, MAX_BRIGHTNESS);
+    Screen.drawBitmap(0, tempY, minusSymbol, sizeof(minusSymbol), 4);
+    Screen.drawBitmap(11, tempY, degreeSymbol, sizeof(degreeSymbol), 4, MAX_BRIGHTNESS);
     temperature *= -1;
     Screen.drawNumbers(3, tempY, {(temperature - temperature % 10) / 10, temperature % 10});
   }
   else if (temperature >= 0)
   {
-    Screen.drawCharacter(7, tempY, Screen.readBytes(degreeSymbol), 4, MAX_BRIGHTNESS);
+    Screen.drawBitmap(7, tempY, degreeSymbol, sizeof(degreeSymbol), 4, MAX_BRIGHTNESS);
     Screen.drawNumbers(4, tempY, {temperature});
   }
   else
   {
-    Screen.drawCharacter(0, tempY, Screen.readBytes(minusSymbol), 4);
-    Screen.drawCharacter(9, tempY, Screen.readBytes(degreeSymbol), 4, MAX_BRIGHTNESS);
+    Screen.drawBitmap(0, tempY, minusSymbol, sizeof(minusSymbol), 4);
+    Screen.drawBitmap(9, tempY, degreeSymbol, sizeof(degreeSymbol), 4, MAX_BRIGHTNESS);
     Screen.drawNumbers(3, tempY, {-temperature});
   }
+}
+
+// Drop the cache so the next loop() (or setup() on activation) fetches fresh
+// data - used after the configured location changes via /api/config
+void WeatherPlugin::forceRefresh()
+{
+  lastUpdate = 0;
+  hasCachedData = false;
 }
 
 const char *WeatherPlugin::getName() const

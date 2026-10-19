@@ -1,4 +1,5 @@
 #include "messages.h"
+#include "timing.h"
 #include <SPI.h>
 
 Messages_ &Messages_::getInstance()
@@ -55,6 +56,15 @@ void Messages_::remove(int id)
 
 void Messages_::scroll()
 {
+  if (activeMessages.empty())
+  {
+    return;
+  }
+
+  // pause the active plugin, it would draw into the same buffer meanwhile
+  const SYSTEM_STATUS previousStatus = currentStatus;
+  currentStatus = LOADING;
+
   for (auto it = activeMessages.begin(); it != activeMessages.end();)
   {
     Message *msg = *it;
@@ -82,13 +92,15 @@ void Messages_::scroll()
       ++it;
     }
   }
+
+  currentStatus = previousStatus;
 }
 
 void Messages_::scrollMessageEveryMinute()
 {
   struct tm timeinfo;
 
-  if (getLocalTime(&timeinfo))
+  if (getSyncedLocalTime(timeinfo))
   {
     if (timeinfo.tm_min != previousMinute)
     {

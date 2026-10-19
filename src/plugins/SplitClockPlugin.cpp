@@ -23,10 +23,8 @@ void SplitClockPlugin::loop()
     return;
   }
 
-  // Read the NTP-maintained clock without getLocalTime's blocking sync timeout.
-  const time_t now = time(nullptr);
   struct tm timeinfo = {};
-  if (localtime_r(&now, &timeinfo) == nullptr || timeinfo.tm_year <= 116)
+  if (!getSyncedLocalTime(timeinfo))
   {
     if (previousValue != -1)
     {

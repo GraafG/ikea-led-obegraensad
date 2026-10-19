@@ -11,32 +11,61 @@ Turn your OBEGRÄNSAD LED Wall Lamp into a live drawing canvas
 
 ## Table of Contents
 
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Hardware Setup](#hardware-setup)
-  - [Opening the Lamp](#opening-the-lamp)
-  - [Understanding the Panels](#understanding-the-panels)
-  - [Pin Configuration](#pin-configuration)
-  - [Alternate Button Wiring](#alternate-button-wiring)
-- [Software Setup](#software-setup)
-  - [ESP32 Setup with VS Code and PlatformIO](#esp32-setup-with-vs-code-and-platformio)
-  - [WiFi Configuration](#wifi-configuration)
-- [OTA Updates](#ota-updates)
-  - [Configuration](#configuration)
-  - [Upload Methods](#upload-methods)
-  - [Visual Feedback](#visual-feedback)
-- [HTTP API Reference](#http-api-reference)
-  - [Device Information](#device-information)
-  - [Plugin Control](#plugin-control)
-  - [Display Control](#display-control)
-  - [Message Display](#message-display)
-  - [Plugin Scheduler](#plugin-scheduler)
-  - [Storage Management](#storage-management)
-- [DDP (Display Data Protocol)](#ddp-display-data-protocol)
-- [Home Assistant Integration](#home-assistant-integration)
-- [Development](#development)
-  - [Plugin Development](#plugin-development)
-- [Troubleshooting](#troubleshooting)
+- [IKEA OBEGRÄNSAD Hack/Mod](#ikea-obegränsad-hackmod)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Quick Start](#quick-start)
+  - [Hardware Setup](#hardware-setup)
+    - [Opening the Lamp](#opening-the-lamp)
+    - [Understanding the Panels](#understanding-the-panels)
+    - [Pin Configuration](#pin-configuration)
+    - [Alternate Button Wiring](#alternate-button-wiring)
+  - [Software Setup](#software-setup)
+    - [ESP32 Setup with VS Code and PlatformIO](#esp32-setup-with-vs-code-and-platformio)
+    - [WiFi Configuration](#wifi-configuration)
+      - [Resetting WiFi](#resetting-wifi)
+      - [DNS Servers](#dns-servers)
+  - [OTA Updates](#ota-updates)
+    - [Configuration](#configuration)
+    - [Upload Methods](#upload-methods)
+      - [Method 1: Web Interface (Manual Upload)](#method-1-web-interface-manual-upload)
+      - [Method 2: PlatformIO (Automated Upload)](#method-2-platformio-automated-upload)
+    - [Visual Feedback](#visual-feedback)
+  - [HTTP API Reference](#http-api-reference)
+    - [Device Information](#device-information)
+    - [Plugin Control](#plugin-control)
+    - [Display Control](#display-control)
+      - [Set Brightness](#set-brightness)
+      - [Scheduled Brightness](#scheduled-brightness)
+      - [Get Display Data](#get-display-data)
+    - [Message Display](#message-display)
+      - [Display a Message](#display-a-message)
+      - [Remove a Message](#remove-a-message)
+    - [Plugin Scheduler](#plugin-scheduler)
+      - [Set Schedule](#set-schedule)
+      - [Start Schedule](#start-schedule)
+      - [Stop Schedule](#stop-schedule)
+      - [Clear Schedule](#clear-schedule)
+    - [Storage Management](#storage-management)
+      - [Clear Storage](#clear-storage)
+  - [DDP (Display Data Protocol)](#ddp-display-data-protocol)
+    - [Python project setup with Poetry](#python-project-setup-with-poetry)
+    - [Quick Start](#quick-start-1)
+    - [Using ddp.py](#using-ddppy)
+    - [Protocol Specification](#protocol-specification)
+  - [Home Assistant Integration](#home-assistant-integration)
+    - [HACS Integration (Recommended)](#hacs-integration-recommended)
+    - [HTTP API Integration](#http-api-integration)
+  - [Development](#development)
+    - [Arduino/C++ Development](#arduinoc-development)
+    - [Frontend Development](#frontend-development)
+    - [Code Quality](#code-quality)
+    - [Plugin Development](#plugin-development)
+      - [**1. Create Plugin Files**](#1-create-plugin-files)
+      - [**2. Register Plugin in main.cpp**](#2-register-plugin-in-maincpp)
+  - [Troubleshooting](#troubleshooting)
+    - [Flickering Panel](#flickering-panel)
+    - [Microcontroller is stuck in boot loop / flickering panel / black panel](#microcontroller-is-stuck-in-boot-loop--flickering-panel--black-panel)
 
 ## Features
 
@@ -54,6 +83,7 @@ Turn your OBEGRÄNSAD LED Wall Lamp into a live drawing canvas
 - Load an image
 - Switch plugin by pressing the button
 - Schedule Plugins to switch after "n" seconds
+- Schedule different brightness for time frame
 
 **Available Plugins:**
 
@@ -73,6 +103,16 @@ Turn your OBEGRÄNSAD LED Wall Lamp into a live drawing canvas
 - Firework
 - DDP (Display Data Protocol)
 - Pong Clock
+- BigPong
+- Auto Walker
+- Bouncing Ball
+- Face
+- Falling Sand
+- Flappy Bird
+- Space Invaders
+- Spotlight
+- Tetris
+- Tron
 
 </details>
 
@@ -95,16 +135,17 @@ centered vertically (not stretched to full height). Hours use 24-hour format;
 both halves retain leading zeros, including `00` at midnight. No colon is drawn
 between the panels.
 
-Configure the same timezone and NTP server on both panels via `/config`. Each
-panel reads its own NTP-maintained clock; they do not communicate directly, so
+Configure the same timezone and NTP server on both panels via **Settings** in
+the web UI. Each panel reads its own NTP-maintained clock; they do not communicate directly, so
 small differences at minute/hour transitions are possible. Unsynchronized
 panels show a waiting indicator without blocking the main loop.
 
 Use **Set Default** on each panel to retain its selected mode across restarts
 (where persistent storage is enabled). Select the mode in the web UI to clear
 an active plugin schedule. The new modes are appended as IDs **31** (HH) and
-**32** (MM); all existing plugin IDs remain unchanged. Integrations should
-discover names and IDs from `/api/info` rather than assume registration order.
+**32** (MM); all existing plugin IDs remain unchanged. Imported upstream modes
+use IDs **33-42**. Integrations should discover names and IDs from `/api/info`
+rather than assume upstream registration order.
 
 ## Hardware Setup
 
@@ -206,12 +247,27 @@ You can use the original button wiring without adding external connections. See 
 This project uses [tzapu's WiFiManager](https://github.com/tzapu/WiFiManager). After booting:
 
 1. Device attempts to connect to known access points
-2. If none available, creates network named `Ikea Display Setup WiFi`
+2. If none available, creates network named `IKEA`
 3. Connect to this network on any device
 4. Captive portal guides you through WiFi configuration
 5. Device reboots and connects to your network
 
 \*_Network name can be changed via `WIFI_MANAGER_SSID` in `include/constants.h`._
+
+#### Resetting WiFi
+
+To switch to another network, clear the stored WiFi credentials:
+
+1. Unplug the device
+2. Press and hold the button while plugging it back in
+3. Keep holding for 5 seconds, then release
+4. The device starts the `IKEA` setup network, continue with step 3 above
+
+Releasing the button earlier cancels the reset. Only the WiFi credentials are cleared, all other settings (plugins, schedule, weather location, ...) are kept. The hold time can be changed via `WIFI_RESET_HOLD_MS` in `include/constants.h`.
+
+#### DNS Servers
+
+By default the device replaces the DNS servers handed out by your router with `8.8.8.8` and `8.8.4.4` (ESP32 only), the IP address itself still comes from DHCP. Change or comment out `DNS_OVERRIDE_1` / `DNS_OVERRIDE_2` in `include/constants.h` to use other servers or the ones from your router.
 
 **ESP8266 (Manual Configuration):**
 
@@ -324,7 +380,15 @@ curl http://your-server/api/info
   "status": "active",
   "plugin": 3,
   "rotation": 90,
-  "brightness": 255,
+  "baseBrightness": 255,
+  "brightness": 64,
+  "brightnessSchedule": {
+    "enabled": true,
+    "startTime": "22:00",
+    "endTime": "07:00",
+    "brightness": 64,
+    "active": true
+  },
   "scheduleActive": true,
   "schedule": [
     { "pluginId": 2, "duration": 60 },
@@ -377,6 +441,9 @@ curl -X PATCH "http://your-server/api/plugin?id=7"
 
 #### Set Brightness
 
+Sets the persistent base brightness. When Scheduled Brightness is currently active, the display remains at its
+scheduled level until the interval ends or the schedule is disabled.
+
 ```http
 PATCH /api/brightness?value={0-255}
 ```
@@ -395,6 +462,33 @@ curl -X PATCH "http://your-server/api/brightness?value=100"
   "message": "Brightness set successfully"
 }
 ```
+
+#### Scheduled Brightness
+
+Scheduled Brightness applies a lower (or higher) global brightness during one repeating local-time interval each
+day. It is configured in the Web GUI and runs on the device, so it continues while the browser is closed. The
+device timezone and NTP configuration determine local time. If time is not synchronized yet, the base brightness is
+used until it is.
+
+Intervals are start-inclusive and end-exclusive and may cross midnight, for example `22:00` through `07:00`.
+
+```http
+PUT /api/brightness-schedule
+Content-Type: application/json
+```
+
+```json
+{
+  "enabled": true,
+  "startTime": "22:00",
+  "endTime": "07:00",
+  "brightness": 64
+}
+```
+
+`startTime` and `endTime` must be zero-padded local `HH:MM` values and must differ. `brightness` is an integer
+between `0` and `255`. A successful response includes the base brightness, current display brightness, and the
+complete `brightnessSchedule` object shown by `GET /api/info`.
 
 #### Get Display Data
 

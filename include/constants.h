@@ -59,6 +59,9 @@
 
 // Display constants
 constexpr uint8_t MAX_BRIGHTNESS = 255;
+// moving shapes sampled onto the grid make near-black edge pixels blink, plugins
+// skip values below this for such edges
+constexpr uint8_t MIN_EDGE_BRIGHTNESS = 16;
 constexpr uint16_t TOTAL_PIXELS = ROWS * COLS;
 
 // set your city or coords (https://github.com/chubin/wttr.in)
@@ -66,6 +69,13 @@ constexpr uint16_t TOTAL_PIXELS = ROWS * COLS;
 
 // name of WiFi created by the device if no known WiFi is available
 #define WIFI_MANAGER_SSID "IKEA"
+
+// hold the button this long while powering on to reset the stored WiFi
+#define WIFI_RESET_HOLD_MS 5000
+
+// override the DNS servers from DHCP (IP stays on DHCP), ESP32 only
+#define DNS_OVERRIDE_1 "8.8.8.8"
+#define DNS_OVERRIDE_2 "8.8.4.4"
 
 // use ALL of the following to use static IP config
 /*

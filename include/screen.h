@@ -6,14 +6,31 @@
 #include "storage.h"
 #include <Arduino.h>
 #include <vector>
+
+#define GRAY_LEVELS 64 // must be a power of two
+
 class Screen_
 {
 private:
   Screen_() = default;
 
   uint8_t brightness_ = MAX_BRIGHTNESS;
+  uint8_t baseBrightness_ = MAX_BRIGHTNESS;
+  // plugins draw into renderBuffer_. present() turns a changed buffer into one
+  // bit plane per PWM tick (shift register order, brightness applied) in the
+  // back half of planes_; the timer swaps halves at the start of a PWM cycle,
+  // so half-drawn frames are never shown and a tick only has to shift out data
   uint8_t renderBuffer_[ROWS * COLS];
-  uint8_t rotatedRenderBuffer_[ROWS * COLS];
+  uint32_t planes_[2][GRAY_LEVELS][TOTAL_PIXELS / 32] = {};
+  volatile uint8_t frontPlanes_ = 0;
+  volatile bool planesReady_ = false;
+  // what was presented last, to skip unchanged frames and for the live preview
+  uint8_t presentedBuffer_[ROWS * COLS] = {0};
+  int16_t presentedKey_ = -1;
+  volatile uint32_t frameCounter_ = 0;
+  // positions[] combined with the rotation, rebuilt when the rotation changes
+  uint8_t pixelMap_[ROWS * COLS];
+  int8_t pixelMapRotation_ = -1;
   uint8_t positions[ROWS * COLS] = {
       0x0f, 0x0e, 0x0d, 0x0c, 0x0b, 0x0a, 0x09, 0x08, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
       0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
@@ -34,8 +51,7 @@ private:
 
   static void onScreenTimer();
   void _render();
-  void rotate();
-  uint8_t *getRotatedRenderBuffer();
+  void buildPixelMap(uint8_t rotation);
 
 public:
   static Screen_ &getInstance();
@@ -47,7 +63,9 @@ public:
   void setCurrentRotation(int rotation, bool shouldPersist = false);
 
   uint8_t getCurrentBrightness() const;
-  void setBrightness(uint8_t brightness, bool shouldStore = false);
+  uint8_t getBaseBrightness() const;
+  void setBaseBrightness(uint8_t brightness, bool shouldStore = false);
+  void setDisplayedBrightness(uint8_t brightness);
 
   void setRenderBuffer(const uint8_t *renderBuffer, bool grays = false);
   uint8_t *getRenderBuffer();
@@ -59,6 +77,14 @@ public:
   void setPixelAtIndex(uint8_t index, uint8_t value, uint8_t brightness = MAX_BRIGHTNESS);
 
   void setup();
+
+  // hands the current render buffer to the display, call after a frame is drawn;
+  // cheap when nothing changed
+  void present();
+  // for drawing code that blocks: shows the frame, then waits
+  void presentAndWait(uint32_t ms);
+  // copies the last presented frame, returns a counter that changes per frame
+  uint32_t copyPresentedFrame(uint8_t *dst);
 
   void loadFromStorage();
   void persist();
@@ -77,6 +103,13 @@ public:
                      const std::vector<int> &bits,
                      int bitCount,
                      uint8_t brightness = MAX_BRIGHTNESS);
+  // Draws a bitmap from flash, see signs.h for the format
+  void drawBitmap(int x,
+                  int y,
+                  const uint8_t *bytes,
+                  size_t length,
+                  int width,
+                  uint8_t brightness = MAX_BRIGHTNESS);
   void drawNumbers(int x,
                    int y,
                    const std::vector<int> &numbers,
